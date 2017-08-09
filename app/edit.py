@@ -9,11 +9,12 @@ from shutil import copyfile
 
 #Define pathes for the R scrits working dir
 #home_dir_1 = '/specific/scratch/davidama/django/app/RScripts/'
-home_dir_1 = '/specific/scratch/amirvizel/django/app/RScripts/'
+#home_dir_1 = '/specific/scratch/amirvizel/django/app/RScripts/'
+home_dir_1 = '/specific/netapp5/gaga/Spike/adeptus/app/RScripts/'
 
 #home_dir_1 = '/specific/scratch/davidama/django/app/'
-home_dir_2 = '/specific/scratch/amirvizel/django/app/'
-
+#home_dir_2 = '/specific/scratch/amirvizel/django/app/'
+home_dir_2 = '/specific/netapp5/gaga/Spike/adeptus/app/'
 
 '''
 input: gene list as string line, seperate by white-spaces(" ") and disease name (from close select list at the broswer)
@@ -118,16 +119,35 @@ def create_disease_onto_graph(sel_type,tissue):
         key_lst = list(disease_ontology_dic[tissue])
 
     elif sel_type == 'default':
-        tmp = list(disease_ontology_dic.values())
-        key_lst = set([])        
-        for lst in tmp:
-            key_lst.update(lst)
-        key_lst = list(key_lst)
-        dis_lst = list(set([t[0]for t in key_lst] + [t[1]for t in key_lst]))
+#########        
+        keys = list(disease_ontology_dic.keys())
+        dis_lst = []
+        key_lst = []
+        for key in keys:
+        #per key=tissue, get all his disease, if our input is in this list, return the key
+            dis_lst += list(set([str(tup[0])+'('+str(key)+')' for tup in disease_ontology_dic[key]] + [str(tup[1])+'('+str(key)+')' for tup in disease_ontology_dic[key]]))
+            key_lst += [(str(tup[0])+'('+str(key)+')',str(tup[1])+'('+str(key)+')') for tup in disease_ontology_dic[key]]
+#        tmp = list(disease_ontology_dic.values())
+#        key_lst = set([])        
+#        for lst in tmp:
+#            key_lst.update(lst)
+#        key_lst = list(key_lst)
+#        dis_lst = list(set([t[0] for t in key_lst] + [t[1] for t in key_lst]))
+    
+#    if 'control' in dis_lst:
+#        dis_lst.remove('control')
+    for dis in dis_lst:
+        if dis.find('control') != -1:
+            dis_lst.remove(dis)
 
-    if 'control' in dis_lst:
-        dis_lst.remove('control')
-
+    for i in range(len(dis_lst)):
+        if dis_lst[i].find('None') != -1:
+            dis_lst[i] = dis_lst[i].split('(')[0]
+ 
+    for i in range(len(key_lst)):
+        if key_lst[i][0].find('None') != -1 or key_lst[i][1].find('None') != -1 :
+            key_lst[i] = (key_lst[i][0].split('(')[0], key_lst[i][1].split('(')[0])
+###########
     for disease in dis_lst: #create each node string - each disease got node
         nodes_str += node_start + disease + node_end
     
@@ -198,26 +218,30 @@ general_DO_set = set([])
 ##################### Numpy functions ##################
 # Added by David Amar, Jan 2017
 def read_matrix_obj_using_numpy(path):
-    f = open(path,'r')
-    header = f.readline().rstrip().split("\t")
-    f.close()
-    mat = np.loadtxt(path,skiprows=1,usecols=range(1,1+len(header)))
-    genes = np.loadtxt(path,skiprows=1,usecols=[0],dtype=str)
-    for i in range(len(genes)):
-        #note: the first replace is because we made manipulate on the disease names in the data file
-        #the second replcae is for js problem with - in vars
-        #the third replace is for names with ' - make confused with strings
-        genes[i] = genes[i].upper().replace("_"," ").replace("-","_").replace("'","")
-    if len(header)-mat.shape[1] == 1:
-        header = header[1:]
-    gene2ind = {}
-    for i in range(len(genes)):
-        gene2ind[genes[i]] = i
-    col2ind = {}
-    for i in range(len(header)):
-        col2ind[header[i]] = i
-    obj = [col2ind,gene2ind,mat,header,genes]  
-    return obj
+    try:
+        f = open(path,'r')
+        header = f.readline().rstrip().split("\t")
+        f.close()
+        mat = np.loadtxt(path,skiprows=1,usecols=range(1,1+len(header)))
+        genes = np.loadtxt(path,skiprows=1,usecols=[0],dtype=str)
+        for i in range(len(genes)):
+            #note: the first replace is because we made manipulate on the disease names in the data file
+            #the second replcae is for js problem with - in vars
+            #the third replace is for names with ' - make confused with strings
+            genes[i] = genes[i].upper().replace("_"," ").replace("-","_").replace("'","")
+        if len(header)-mat.shape[1] == 1:
+            header = header[1:]
+        gene2ind = {}
+        for i in range(len(genes)):
+            gene2ind[genes[i]] = i
+        col2ind = {}
+        for i in range(len(header)):
+            col2ind[header[i]] = i
+        obj = [col2ind,gene2ind,mat,header,genes]  
+        return obj
+    except Exception as e:
+        return None
+        
 
 def get_matrix_column(term,matrix_obj):
     if not matrix_obj[0].has_key(term):
@@ -687,7 +711,7 @@ def define_dl_colors(gene):
 
 '''
 return the down-right node color string part for the js
-based on the gene-drug data
+based on the mutation data
 '''
 def define_dr_colors(gene,disease):
     if disease == None:
@@ -697,7 +721,6 @@ def define_dr_colors(gene,disease):
 
         DO = name_to_DOID_dic[disease.lower()]
         if DO in Lawrance_mut_dic:
-
             if gene in Lawrance_mut_dic[DO]:
                 return 'drblack: 2.5, drwhite: 0,'
     
@@ -773,8 +796,30 @@ getter for the control DO terms
 '''
 def get_control_do():
     return control_DO
-        
 
+        
+'''
+input: disease name
+output: the label (tissue/general) that tissue remain of
+'''
+def find_tissue_per_disease(disease):
+    #get from the disease name his tissue
+    #by spliting by '(', get the second term and left the term before ')'
+    tup = disease.split('(')
+    if len(tup) == 1:
+        return None, ''
+    #otherwise
+    else:
+        tissue = tup[1][:-1]
+        return tissue, tissue
+#    keys = list(disease_ontology_dic.keys())
+#    
+#    for key in keys:
+#        #per key=tissue, get all his disease, if our input is in this list, return the key
+#        values = [tup[0] for tup in disease_ontology_dic[key]] + [tup[1] for tup in disease_ontology_dic[key]]
+#        if disease in values:
+#            return key
+    
 '''
 input: lst of genes, and term (disease and tissue)
 output: table of all the gene scores for that term
@@ -796,12 +841,22 @@ def get_gene_lst_reports(gene_lst, disease, tissue):
         for gene in gene_lst:
             PNROC = format_pvalue_to_string(get_matrix_value(term, gene, negative_mat))
             PBROC = format_pvalue_to_string(get_matrix_value(term, gene, background_mat))
-            rep = format_pvalue_to_string(get_matrix_value(term, gene, rep_score_mat))
+            rep = get_matrix_value(term, gene, rep_score_mat)
+            if rep != None:            
+                rep = format_pvalue_to_string(rep)
+            else:
+                rep = "NULL"
+                
             if disease == "control":
                 spec = "NULL"
             else:
                 spec = format_pvalue_to_string(get_matrix_value(term, gene, spec_score_mat))
-            SMQ = format_pvalue_to_string(get_matrix_value(term, gene, smqs_score_mat))
+            SMQ = get_matrix_value(term, gene, smqs_score_mat)
+            if SMQ != None:
+                SMQ = format_pvalue_to_string(SMQ)
+            else:
+                SMQ = "NULL"
+                
             table_str = '\"<table>'
             table_str += '\t<tr>'
             table_str += '\t\t<td>' + "" + '</td>'
@@ -824,7 +879,7 @@ def get_gene_lst_reports(gene_lst, disease, tissue):
             table_str += '\t\t<td>' + spec + '</td>'
             table_str += '\t</tr>'
             table_str += '\t<tr>'        
-            table_str += '\t\t<td>' + "SMQ" + '</td>'
+            table_str += '\t\t<td>' + "Meta-analysis q-value" + '</td>'
             table_str += '\t\t<td>' + SMQ + '</td>'
             table_str += '\t</tr>'
             table_str += '</table>\"\n'
@@ -833,6 +888,21 @@ def get_gene_lst_reports(gene_lst, disease, tissue):
     
     reports = reports[:-1] + '}'
 
+    return reports
+
+
+
+def get_drugs_report(gene_list):
+    
+    reports = '{'
+    
+    for gene in gene_list:
+        if gene in have_drugs_dic:
+            reports += str(gene) + ':' + '"Drugs targeting the gene (durgbank ids)\: ' + ', '.join(have_drugs_dic[gene]) + '",'
+        else:
+            reports += str(gene) + ': "",'
+    
+    reports = reports[:-1] + '}'
     return reports
 
 
@@ -845,12 +915,11 @@ def get_dis_reports(disease, tissue):
     if disease == None or '*' in disease:
         term = '0' #key for None term in the disease dic
     elif tissue == None:
-        term = str(disease)
+        term = str(disease).replace("-","_")
     else:
-        term = str(disease) + ";" + str(tissue)
+        term = str(disease).replace("-","_") + ";" + str(tissue).replace("-","_")
     
     term = term.upper()
-    
     return dis_reports_dic[term]
 
 
@@ -860,7 +929,6 @@ return: dic with term as key and his properties table as value
 '''
 def create_dis_reports_dic(mat):
     diseases = list(mat[len(mat) - 1])
-
     for dis in diseases:
         TotalDatasets = str(int(get_matrix_value('TotalDatasets',dis,mat)))
         RepAnalysisDatasets = str(int(get_matrix_value('RepAnalysisDatasets',str(dis),mat)))
@@ -910,9 +978,15 @@ def get_bar_plots(disease,tissue,lst = []):
     charts_js_dic = '{'
     if tissue == None and disease == None:
         for gene in lst:
-            charts_js_dic += str(gene) + ': " ",'
+            charts_js_dic += str(gene) + ': "undefined",'###
     else:
         mat = read_file_for_bar_plot(disease, tissue)
+        if mat == None:
+            for gene in lst:
+                charts_js_dic += str(gene) + ': " ",'
+            charts_js_dic = charts_js_dic + '};'
+            return charts_js_dic
+            
         terms = mat[0]
         genes = list(mat[len(mat) - 1])
     
@@ -1265,7 +1339,7 @@ and create the string of the html table
 '''
 def cerate_go_browser_table(file_name):
     res_file = 'app/Expander/result/' + file_name + '_tmp_result.txt'
-    download = '/static/downloads/' + file_name + '_tmp_result.csv'
+    download = '/static/downloads/' + file_name + '_tmp_result.txt'
     copyfile(res_file, "app/" + download)
     
     with open(res_file, 'r') as file_text:
